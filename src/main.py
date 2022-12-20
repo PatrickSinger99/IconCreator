@@ -1,9 +1,10 @@
 import tkinter as tk
-from PIL import Image, ImageTk
 from tkinter.font import Font
 from image_edits import *
 import subprocess
-import tkinter.dnd as dnd
+from tkinter import filedialog
+import threading
+
 
 """APP"""
 
@@ -14,10 +15,12 @@ class App(tk.Tk):
 
         self.title("Icon Creator")
         self.resizable(False, False)
+        self.iconbitmap("icons/app_icon.ico")
 
         self.loaded_images_compressed = {}
         self.loaded_images_original = {}
-        self.current_selected_image = None
+        self.current_selected_image_path = None
+        self.current_selected_image_data = None
         self.display_images = True
 
         """COLORS"""
@@ -32,7 +35,15 @@ class App(tk.Tk):
         self.folder_button_hover_color = "#ffad33"
         self.folder_button_active_color = "#ff9900"
 
+        self.convert_button_bg_color = "#00b386"
+        self.convert_button_hover_color = "#00cc99"
+        self.convert_button_active_color = "white"  # "#00e6ac"
+
         """IMAGES"""
+
+        self.app_logo = tk.PhotoImage(file="icons/app_icon_medium.png")
+
+        self.settings_icon = tk.PhotoImage(file="icons/settings.png")
 
         self.delete_icon = tk.PhotoImage(file="icons/delete.png")
         self.folder_icon = tk.PhotoImage(file="icons/folder.png")
@@ -43,10 +54,14 @@ class App(tk.Tk):
 
         self.plus_icon = tk.PhotoImage(file="icons/plus.png")
 
+        self.convert_one_icon = tk.PhotoImage(file="icons/convert_one.png")
+        self.convert_all_icon = tk.PhotoImage(file="icons/convert_all.png")
+
         """FRAMES"""
 
         self.header_frame = tk.Frame(self, bg="grey", width=900, height=50)
         self.header_frame.grid(row=0, column=0, columnspan=2)
+        self.header_frame.pack_propagate(False)
 
         self.sidebar_frame = tk.Frame(self, bg="black", width=200, height=700)
         self.sidebar_frame.grid(row=1, column=0)
@@ -58,6 +73,27 @@ class App(tk.Tk):
 
         self.footer_frame = tk.Frame(self, bg="grey", width=900, height=50)
         self.footer_frame.grid(row=2, column=0, columnspan=2)
+        self.footer_frame.pack_propagate(False)
+
+        """HEADER CONTENT"""
+
+        self.title_label = tk.Label(self.header_frame, text=" Icon Creator", font=Font(size=20), bd=0,
+                                    image=self.app_logo, compound="left", bg="grey")
+
+        self.title_label.pack(side="left", padx=(6, 0))
+
+        self.info_label = tk.Label(self.header_frame, text="Version 0.1", font=Font(size=11), bg="grey",
+                                   fg="light grey")
+
+        self.info_label.pack(side="left", padx=(10, 0))
+
+        self.settings_button = tk.Button(self.header_frame, text="Settings ", bd=0, relief="flat", cursor="hand2",
+                                         font=Font(size=11), image=self.settings_icon, compound="right",
+                                         bg="grey", activebackground="white")
+        self.settings_button.pack(side="right", fill="y", ipadx=8)
+
+        self.settings_button.bind("<Enter>", lambda e: self.settings_button.configure(bg="light grey"))
+        self.settings_button.bind("<Leave>", lambda e: self.settings_button.configure(bg="grey"))
 
         """SIDEBAR HEADER"""
 
@@ -77,13 +113,11 @@ class App(tk.Tk):
                                       font=Font(size=10, weight="bold"), fg="white")
         self.sidebar_title.pack(side="left", anchor="w")
 
-
-
-
+        """SIDEBAR ADD IMAGE"""
 
         self.add_images_button = tk.Button(self.sidebar_frame, text="Add Images ", cursor="hand2", bd=0, relief="flat",
                                            compound="right", bg=self.image_active_color, image=self.plus_icon,
-                                           font=Font(size=11))
+                                           font=Font(size=11), command=self.select_files)
         self.add_images_button.pack(side="bottom", fill="x", ipady=2)
 
         self.add_images_button.bind("<Enter>", lambda e: self.add_images_button.configure(bg=self.image_hover_color))
@@ -115,11 +149,36 @@ class App(tk.Tk):
 
         """IMAGE CANVAS"""
 
-        self.selected_image_display = tk.Label(self.image_frame)
-        self.selected_image_display.pack()
+        self.selected_image_display = tk.Label(self.image_frame, bd=0, text="No image selected", bg="light grey")
+        self.selected_image_display.place(relx=0.5, rely=0.5, anchor="center")
+
+        """FOOTER CONTENT"""
+
+        self.convert_all_button = tk.Button(self.footer_frame, text="Convert all images ", bd=0, relief="flat",
+                                            cursor="hand2", font=Font(size=11), image=self.convert_all_icon,
+                                            compound="right", bg=self.convert_button_bg_color,
+                                            activebackground=self.convert_button_active_color)
+        self.convert_all_button.pack(side="right", fill="y", pady=8, padx=(4, 8), ipadx=3)
+
+        self.convert_all_button.bind("<Enter>", lambda e: self.convert_all_button
+                                     .configure(bg=self.convert_button_hover_color))
+        self.convert_all_button.bind("<Leave>", lambda e: self.convert_all_button
+                                     .configure(bg=self.convert_button_bg_color))
+
+        self.convert_selected_button = tk.Button(self.footer_frame, text="Convert selected image ", bd=0, relief="flat",
+                                                 cursor="hand2", font=Font(size=11), image=self.convert_one_icon,
+                                                 compound="right", bg=self.convert_button_bg_color,
+                                                 activebackground=self.convert_button_active_color)
+        self.convert_selected_button.pack(side="right", fill="y", pady=8, padx=(0, 4), ipadx=3)
+
+        self.convert_selected_button.bind("<Enter>", lambda e: self.convert_selected_button
+                                          .configure(bg=self.convert_button_hover_color))
+        self.convert_selected_button.bind("<Leave>", lambda e: self.convert_selected_button
+                                          .configure(bg=self.convert_button_bg_color))
 
     def on_mousewheel(self, event):
-        self.body_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        if self.body_canvas.yview() != (0.0, 1.0):
+            self.body_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def bind_to_mousewheel(self):
         self.body_canvas.bind_all("<MouseWheel>", self.on_mousewheel)
@@ -129,7 +188,7 @@ class App(tk.Tk):
 
     def add_image(self, path):
 
-        self.loaded_images_original[path] = ImageTk.PhotoImage(Image.open(path))
+        # self.loaded_images_original[path] = ImageTk.PhotoImage(Image.open(path))
         self.loaded_images_compressed[path] = image_scale_down(path)
 
         image_frame = tk.Frame(self.content_frame, bg=self.image_bg_color, cursor="hand2")
@@ -141,10 +200,15 @@ class App(tk.Tk):
 
         image_delete_button = tk.Button(image_frame, image=self.delete_icon, relief="flat", bd=0,
                                         bg=self.image_bg_color, activebackground=self.delete_button_active_color,
-                                        command=image_frame.destroy)
+                                        command=lambda: self.remove_image(image_frame))
         image_delete_button.grid(row=0, column=1, sticky="ens", ipadx=2)
 
-        image_display = tk.Label(image_frame, image=self.loaded_images_compressed[path], bd=0)
+        if self.display_images:
+            shown_img = self.loaded_images_compressed[path]
+        else:
+            shown_img = self.placeholder_image
+
+        image_display = tk.Label(image_frame, image=shown_img, bd=0, bg=self.image_bg_color)
         image_display.grid(row=1, column=0, columnspan=2)
 
         path_label = tk.Label(image_frame, text=path, bg=self.image_bg_color, width=25, anchor="w", font=Font(size=7))
@@ -152,7 +216,8 @@ class App(tk.Tk):
 
         path_button = tk.Button(image_frame, image=self.folder_icon, relief="flat", bd=0, bg=self.image_bg_color,
                                 activebackground=self.folder_button_active_color,
-                                command=lambda: subprocess.Popen(r'explorer /select,' + path_label["text"]))
+                                command=lambda: subprocess.Popen("explorer.exe /select, \"" + path_label["text"]
+                                                                 .replace("/", "\\") + "\""))
         path_button.grid(row=2, column=1, sticky="ens", ipadx=2)
 
         """BINDS"""
@@ -171,13 +236,24 @@ class App(tk.Tk):
         image_display.bind("<Button-1>", lambda e: self.set_selected_image(path, image_frame))
         path_label.bind("<Button-1>", lambda e: self.set_selected_image(path, image_frame))
 
+    def remove_image(self, image_frame):
+
+        if image_frame.children["!label3"]["text"] == self.current_selected_image_path:
+            self.current_selected_image_path = None
+            self.current_selected_image_data = None
+            self.selected_image_display["image"] = ""
+
+        self.loaded_images_compressed.pop(image_frame.children["!label3"]["text"])
+
+        image_frame.destroy()
+
     def set_to_bg_color(self, frame_widget, ignore_active=False):
         if ignore_active:
             frame_widget["bg"] = self.image_bg_color
             for widget in frame_widget.winfo_children():
                 widget["bg"] = self.image_bg_color
 
-        elif frame_widget.children["!label3"]["text"] != self.current_selected_image:
+        elif frame_widget.children["!label3"]["text"] != self.current_selected_image_path:
             frame_widget["bg"] = self.image_bg_color
             for widget in frame_widget.winfo_children():
                 widget["bg"] = self.image_bg_color
@@ -195,12 +271,14 @@ class App(tk.Tk):
         for frame in self.content_frame.winfo_children():
             self.set_to_bg_color(frame, ignore_active=True)
 
-        self.current_selected_image = img_path
+        self.current_selected_image_path = img_path
         frame_widget["bg"] = self.image_active_color
         for widget in frame_widget.winfo_children():
             widget["bg"] = self.image_active_color
 
-        self.selected_image_display["image"] = image_scale_down(self.current_selected_image)
+        self.current_selected_image_data = image_scale_down(self.current_selected_image_path,
+                                                            max_width=600, max_height=600)
+        self.selected_image_display.configure(image=self.current_selected_image_data)
 
     def toggle_images(self):
         self.content_scrollbar.set(0, 1)
@@ -221,6 +299,15 @@ class App(tk.Tk):
             for frame in self.content_frame.winfo_children():
                 frame.children["!label2"]["image"] = self.loaded_images_compressed[frame.children["!label3"]["text"]]
 
+        self.body_canvas.yview_moveto(0)
+
+    def select_files(self):
+        selected_files = filedialog.askopenfilenames()
+
+        for file in selected_files:
+            if file.split(".")[-1].lower() in ["jpg", "jpeg", "png", "gif", "webp"]:
+                if file not in self.loaded_images_compressed.keys():
+                    threading.Thread(target=lambda: self.add_image(file), daemon=True).start()
 
 
 """MAIN"""
@@ -228,7 +315,7 @@ class App(tk.Tk):
 if __name__ == "__main__":
     app = App()
 
-    app.add_image(path="E:/=Eigene Dateien=/Code/PycharmProjectsWithVenvs/IconGenerator/test_imgs/5d83625f89b0c1814982d588f632464c.jpg")
+    app.add_image(path="E:/GitHub Repositories/IconCreator/src/test_imgs/5d83625f89b0c1814982d588f632464c.jpg")
     app.add_image(path="./test_imgs/9otlbw0pcbi11.png")
     app.add_image(path="./test_imgs/91e9898R7QL._RI_.jpg")
     app.add_image(path="./test_imgs/852aafd708a8b51554779573d67c4026fb9769a8r1-333-301v2_00.jpg")
