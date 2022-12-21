@@ -24,7 +24,7 @@ def add_checkerboard_pattern(image):
         return image
 
 
-def image_scale_down(path, max_width=166, max_height=120):
+def image_scale_down(path, max_width=172, max_height=120):
 
     original_img = Image.open(path)
     width, height = original_img.size
